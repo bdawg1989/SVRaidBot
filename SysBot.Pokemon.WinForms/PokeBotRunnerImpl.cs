@@ -2,6 +2,7 @@
 using SysBot.Pokemon.Discord;
 using System.Threading;
 using System.Threading.Tasks;
+using SysBot.Web;
 
 namespace SysBot.Pokemon
 {
@@ -21,6 +22,9 @@ namespace SysBot.Pokemon
         protected override void AddIntegrations()
         {
             AddDiscordBot(Hub.Config.Discord.Token);
+            
+            // Web-API auf Port 6500 starten (oder nächsten freien Port)
+            WebApiIntegration.StartWebApi(this, 6500);
         }
 
         private void AddDiscordBot(string apiToken)

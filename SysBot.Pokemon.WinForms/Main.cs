@@ -1,6 +1,7 @@
 ﻿using PKHeX.Core;
 using SysBot.Base;
 using SysBot.Pokemon.SV.BotRaid.Helpers;
+using SysBot.Web;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -69,10 +70,13 @@ namespace SysBot.Pokemon.WinForms
             }
 
             LoadControls();
-            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "NotPaldea.net" : Config.Hub.BotName)} {SVRaidBot.Version} ({Config.Mode})";
+            Text = $"{(string.IsNullOrEmpty(Config.Hub.BotName) ? "Hideout" : Config.Hub.BotName)} {SVRaidBot.Version} ({Config.Mode})";
             Task.Run(BotMonitor);
             InitUtil.InitializeStubs(Config.Mode);
             StartTcpListener();
+            
+            // Starte die Web-API
+            WebApiIntegration.StartWebApi(RunningEnvironment, 6500);
 
             LogUtil.LogInfo($"Bot initialization complete", "System");
         }
@@ -541,6 +545,9 @@ namespace SysBot.Pokemon.WinForms
                 _autoSaveTimer.Stop();
                 _autoSaveTimer.Dispose();
             }
+
+            // Web-API stoppen
+            WebApiIntegration.StopWebApi();
 
             SaveCurrentConfig();
             var bots = RunningEnvironment;

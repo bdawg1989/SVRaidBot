@@ -2506,7 +2506,7 @@ namespace SysBot.Pokemon.SV.BotRaid
             }
 
             string disclaimer = Settings.ActiveRaids.Count > 1
-                                ? $"notpaldea.net"
+                                ? $"Hideout"
                                 : "";
 
             var turl = string.Empty;
