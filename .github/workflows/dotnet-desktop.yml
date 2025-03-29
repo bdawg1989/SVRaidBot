@@ -5,6 +5,13 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Build erzwingen (ignoriert Versionscheck)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   version-check:
@@ -39,7 +46,7 @@ jobs:
 
   build:
     needs: version-check
-    if: needs.version-check.outputs.version_changed == 'true'
+    if: needs.version-check.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch' && github.event.inputs.force_build == 'true'
     runs-on: windows-latest
     env:
       Project_Name: SysBot.Pokemon.WinForms/SysBot.Pokemon.WinForms.csproj
@@ -68,7 +75,7 @@ jobs:
 
   create-release:
     needs: [version-check, build]
-    if: needs.version-check.outputs.version_changed == 'true'
+    if: needs.version-check.outputs.version_changed == 'true' || github.event_name == 'workflow_dispatch' && github.event.inputs.force_build == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
