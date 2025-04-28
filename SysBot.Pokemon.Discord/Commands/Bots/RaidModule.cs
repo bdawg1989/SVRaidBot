@@ -24,7 +24,6 @@ namespace SysBot.Pokemon.Discord.Commands.Bots
     public partial class RaidModule<T> : ModuleBase<SocketCommandContext> where T : PKM, new()
     {
         private readonly PokeRaidHub<T> Hub = SysCord<T>.Runner.Hub;
-        private static DiscordSocketClient _client => SysCord<T>.Instance.GetClient();
 
         [Command("raidinfo")]
         [Alias("ri", "rv")]

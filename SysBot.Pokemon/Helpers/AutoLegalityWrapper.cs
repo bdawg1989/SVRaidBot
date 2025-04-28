@@ -1,8 +1,6 @@
 ﻿using PKHeX.Core;
 using PKHeX.Core.AutoMod;
 using System;
-using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Threading;
 
@@ -68,9 +66,9 @@ namespace SysBot.Pokemon
             ushort SID = 12345;
             int lang = (int)LanguageID.English;
 
-            for (int i = 1; i < PKX.Generation + 1; i++)
+            for (int i = 1; i < Latest.Generation + 1; i++)
             {
-                var versions = GameUtil.GetVersionsInGeneration((byte)i, (GameVersion)PKX.Generation);
+                var versions = GameUtil.GetVersionsInGeneration((byte)i, (GameVersion)Latest.Generation);
                 foreach (var v in versions)
                 {
                     var gameVersion = v;

@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Net;
 using System.Text;
+using System.ComponentModel;
 
 namespace SysBot.Pokemon.WinForms
 {
@@ -25,6 +26,7 @@ namespace SysBot.Pokemon.WinForms
         private IPokeBotRunner RunningEnvironment { get; set; }
 
         public readonly ISwitchConnectionAsync? SwitchConnection;
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public static bool IsUpdating { get; set; } = false;
         private System.Windows.Forms.Timer _autoSaveTimer;
         private TcpListener? _tcpListener;

@@ -340,19 +340,6 @@ namespace SysBot.Pokemon.SV
             );
         }
 
-        public static (PK9, uint) IsSeedReturned(ITeraRaid enc, Raid raid)
-        {
-            GenerateParam9 param = enc.GetParam();
-            PK9 blank = new()
-            {
-                Species = enc.Species,
-                Form = enc.Form
-            };
-            _ = Encounter9RNG.GenerateData(blank, param, EncounterCriteria.Unrestricted, raid.Seed);
-
-            return (blank, raid.Seed);
-        }
-
         public static string GetSpecialRewards(IReadOnlyList<(int, int, int)> rewards, List<string> rewardsToShow)
         {
             // Initialize reward counters

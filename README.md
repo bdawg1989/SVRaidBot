@@ -43,11 +43,11 @@ __Limit Requests__
 ## Auto Story Progress 
 - StoryProgress will automatically edit the game flags to change the story progress for you per raid!  No need for two bots anymore for "baby" raids and "adult" raids!  
 
-# __Not RaidBot Guide__
+# __SV Raid Bot Guide__
 
  - **ActiveRaids**
   - Changing Battle Pokémon - Inside of the collection editor is where all of your requested and auto rotate Pokémon live.  You can change the bots Pokémon by editing the `PartyPK` setting and opening up the editor.  Here, you will put in your desired showdown format for the Pokémon you wish the bot to use for the raid.  The bot will use that Pokémon for that raid only.  Once the raid is done, the original Pokémon that you had first in your party will be used in the next raid unless the next raid also has a PartyPK filled out.
-
+  - New 4/27/25 - When starting the program for the first time, the bot will automatically add two random shiny raids to your ActiveRaids list.  That way, you don't have to figure out how to add raids and can start right away, especially if you turn the Mystery Raid feature on.  This makes the program a lot more beginner friendly.
 - **RaidSettings**
  - GenerateRaidsFromFile - Set this to `True` and add your own seeds that you want rotated to this file.  When you start up the program for the first time, it will create a new folder called `raidfilessv`    for you and add the `raidsv.txt` file to it.  You will open this file, and add your seeds to it like this `<seed>-<speciesname>-<stars/difficulty>-<storyprogresslevel>`
    - Example:  If i'm looking at Raidcalc and your settings were  Story Progress: 4* Unlocked and Stars: 3, you would add that seed in as `3739A70B-Goomy-3-4`
