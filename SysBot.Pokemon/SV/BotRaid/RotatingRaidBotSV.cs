@@ -2782,8 +2782,9 @@ namespace SysBot.Pokemon.SV.BotRaid
                 }
             }
 
-            string disclaimer = Settings.ActiveRaids.Count > 1
+            string disclaimer = _settings.ActiveRaids.Count > 1
                                 ? $"Hideout"
+                                : string.Empty;
 
             var turl = string.Empty;
             Log($"Rotation Count: {RotationCount} | Species is {_settings.ActiveRaids[RotationCount].Species}");
