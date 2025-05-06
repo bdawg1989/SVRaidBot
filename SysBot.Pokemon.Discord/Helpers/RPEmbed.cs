@@ -38,7 +38,7 @@ public static class RPEmbed
         embed.WithAuthor(auth =>
         {
             auth.Name = "Pokémon Updated!";
-            auth.Url = "https://notpaldea.net";
+            auth.Url = "https://hideoutpk.de";
         });
 
         return embed.Build();

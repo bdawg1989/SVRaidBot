@@ -755,7 +755,7 @@ namespace SysBot.Pokemon.Discord.Commands.Bots
                 5 => "5☆ Unlocked Progress",
                 4 => "4☆ Unlocked Progress",
                 3 => "3☆ Unlocked Progress",
-                _ => throw new ArgumentException("Invalid Story Progress Level... where are you getting your seeds?\nUse <https://genpkm.com/seeds.html> to get them."),
+                _ => throw new ArgumentException("Invalid Story Progress Level... where are you getting your seeds?\nUse <hideout-pk.de> to get them."),
             };
         }
 

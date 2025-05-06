@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Configurations>Debug;Release;sysbottest</Configurations>
     <TargetFramework>net9.0</TargetFramework>
-    <LangVersion>12.0</LangVersion>
+    <LangVersion>13.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="AnimatedGif" Version="1.0.5" />

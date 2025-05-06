@@ -46,7 +46,7 @@ namespace SysBot.Pokemon
             public override string ToString() => "Restart Game Settings";
 
             [Category(OpenGame), Description("Enable this to decline incoming system updates.")]
-            public bool AvoidSystemUpdate { get; set; } = false;
+            public bool AvoidSystemUpdate { get; set; } = true;
 
             [Category(OpenGame), Description("Enable this to add a delay for \"Checking if Game Can be Played\" Pop-up.")]
             public bool CheckGameDelay { get; set; } = false;

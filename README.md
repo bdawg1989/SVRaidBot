@@ -17,7 +17,7 @@ https://youtu.be/wlFE04oiqGs?si=EDoVRaocGyCapN9n
 ## Raid Requests
 __Adding Requests__
  - Users can request their own raids using command `ra <seed> <difficulty> <storyprogress>`.
- - I have an online seed finder located here for your users to use: https://genpkm.com/seeds.html
+ - I have an online seed finder located here for your users to use: [https://genpkm.com/raids/seeds/](https://genpkm.com/raids/seeds/index.php)
    
 __Removing Request__
 - Users can remove thier raid request by simply typing the `rqc` command.  This removes them from the queue.

@@ -1,40 +1,10 @@
 ﻿using PKHeX.Core;
-using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.Serialization;
 
 namespace SysBot.Pokemon.SV.BotRaid
 {
     public static class BlockUtil
     {
-        public static SCBlock CreateDummyBlock(uint key, SCTypeCode dummy)
-        {
-            var block = (SCBlock)FormatterServices.GetUninitializedObject(typeof(SCBlock));
-            var keyInfo = typeof(SCBlock).GetField("Key", BindingFlags.Instance | BindingFlags.Public)!;
-            keyInfo.SetValue(block, key);
-            var typeInfo = typeof(SCBlock).GetProperty("Type")!;
-            typeInfo.SetValue(block, dummy);
-            var dataInfo = typeof(SCBlock).GetField("Data", BindingFlags.Instance | BindingFlags.Public)!;
-            dataInfo.SetValue(block, Array.Empty<byte>());
-            return block;
-        }
-
-        public static void EditBlockType(SCBlock block, SCTypeCode type)
-        {
-            var typeInfo = typeof(SCBlock).GetProperty("Type")!;
-            typeInfo.SetValue(block, type);
-        }
-
-        public static SCBlock FindOrDefault(this SCBlockAccessor Accessor, uint Key) => Accessor.BlockInfo.FindOrDefault(Key);
-
-        public static SCBlock FindOrDefault(this IReadOnlyList<SCBlock> blocks, uint key)
-        {
-            var res = blocks.Where(block => block.Key == key).FirstOrDefault();
-            return res is not null ? res : CreateDummyBlock(key, SCTypeCode.None);
-        }
-
         public static byte[] EncryptBlock(uint key, byte[] block) => DecryptBlock(key, block);
 
         public static byte[] DecryptBlock(uint key, byte[] block)

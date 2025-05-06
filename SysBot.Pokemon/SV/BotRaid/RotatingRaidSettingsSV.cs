@@ -57,9 +57,6 @@ namespace SysBot.Pokemon
             [DisplayName("Species")]
             public Species Species { get; set; } = Species.None;
 
-            [DisplayName("Force Selected Species?")]
-            public bool ForceSpecificSpecies { get; set; } = false;
-
             [DisplayName("Pokemon Form Number")]
             public int SpeciesForm { get; set; } = 0;
 
@@ -434,20 +431,8 @@ namespace SysBot.Pokemon
             public bool TakeScreenshot { get; set; } = true;
 
             [Category(Hosting), Description("Delay in milliseconds for capturing a screenshot once in the raid.\n 0 Captures the Raid Mon Up close.\n3500 Captures Players Only.\n10000 Captures players and Raid Mon.")]
-            [DisplayName("Screenshot Timing (Non Gif Imgs)")]
+            [DisplayName("Screenshot Timing")]
             public ScreenshotTimingOptions ScreenshotTiming { get; set; } = ScreenshotTimingOptions._3500;
-
-            [Category(FeatureToggle), Description("When enabled, the bot will snap an animated image (gif) of what's happening once inside the raid, instead of a standard still img.")]
-            [DisplayName("Use Gif Screenshots?")]
-            public bool AnimatedScreenshot { get; set; } = true;
-
-            [Category(FeatureToggle), Description("Amount of frames to capture for the embed.  20-30 is a good number.")]
-            [DisplayName("Frames to Capture (Gif's Only)")]
-            public int Frames { get; set; } = 30;
-
-            [Category(FeatureToggle), Description("Quality of the GIF. Higher quality means larger file size.")]
-            [DisplayName("GIF Quality")]
-            public GifQuality GifQuality { get; set; } = GifQuality.Default;
 
             [Category(FeatureToggle), Description("When enabled, the bot will hide the raid code from the Discord embed.")]
             public bool HideRaidCode { get; set; } = false;
@@ -614,10 +599,7 @@ namespace SysBot.Pokemon
             public DTFormat DateTimeFormat { get; set; } = DTFormat.MMDDYY;
 
             [Category(Hosting), Description("When enabled, the bot will use the overshoot method to apply rollover correction, otherwise will use DDOWN clicks.")]
-            public bool UseOvershoot { get; set; } = false;
-
-            [Category(Hosting), Description("Amount of times to hit DDOWN for accessing date/time settings during rollover correction. [Default: 39 Clicks]")]
-            public int DDOWNClicks { get; set; } = 39;
+            public bool UseOvershoot { get; set; } = true;
 
             [Category(Hosting), Description("Time to scroll down duration in milliseconds for accessing date/time settings during rollover correction. You want to have it overshoot the Date/Time setting by 1, as it will click DUP after scrolling down. [Default: 930ms]")]
             public int HoldTimeForRollover { get; set; } = 900;
