@@ -1,5 +1,6 @@
 ﻿using Discord;
 using PKHeX.Core;
+using RaidCrawler.Core.Structures;
 using System;
 using System.Text.RegularExpressions;
 
@@ -18,6 +19,7 @@ public static class RaidEmbedDataPopulator
         // Basic information
         RaidEmbedInfoHelpers.RaidSpecies = (Species)pk.Species;
         RaidEmbedInfoHelpers.RaidSpeciesForm = pk.Form;
+        RaidEmbedInfoHelpers.IsShiny = pk.IsShiny;
 
         // Embed title from author name
         RaidEmbedInfoHelpers.RaidEmbedTitle = embed.Author?.Name ?? string.Empty;

@@ -18,4 +18,5 @@ internal static class RaidEmbedInfoHelpers
     public static string ScaleText = string.Empty;
     public static string SpecialRewards = string.Empty;
     public static int ScaleNumber;
+    public static bool IsShiny = false;
 }

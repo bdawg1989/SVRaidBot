@@ -19,7 +19,7 @@ namespace SysBot.Pokemon
             Timeout = TimeSpan.FromSeconds(30)
         };
 
-        public static string PokeImg(PKM pkm, bool canGmax, bool fullSize, bool? forceShiny = null)
+        public static string PokeImg(PKM pkm, bool canGmax, bool fullSize)
         {
             bool md = false;
             bool fd = false;
@@ -71,7 +71,7 @@ namespace SysBot.Pokemon
             baseLink[4] = pkm.PersonalInfo.OnlyFemale ? "fo" : pkm.PersonalInfo.OnlyMale ? "mo" : pkm.PersonalInfo.Genderless ? "uk" : fd ? "fd" : md ? "md" : "mf";
             baseLink[5] = canGmax ? "g" : "n";
             baseLink[6] = "0000000" + ((pkm.Species == (int)Species.Alcremie && !canGmax) ? ((IFormArgument)pkm).FormArgument.ToString() : "0");
-            baseLink[8] = (forceShiny ?? pkm.IsShiny) ? "r.png" : "n.png";
+            baseLink[8] = pkm.IsShiny ? "r.png" : "n.png";
             return string.Join("_", baseLink);
         }
 

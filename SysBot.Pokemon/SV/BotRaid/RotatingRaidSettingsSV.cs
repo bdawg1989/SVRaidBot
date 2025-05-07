@@ -61,7 +61,7 @@ namespace SysBot.Pokemon
             public int SpeciesForm { get; set; } = 0;
 
             [DisplayName("Is Pokemon Shiny?")]
-            public bool IsShiny { get; set; } = true;
+            public bool IsShiny { get; set; } = false;
 
             [DisplayName("Crystal Type")]
             public TeraCrystalType CrystalType { get; set; } = TeraCrystalType.Base;

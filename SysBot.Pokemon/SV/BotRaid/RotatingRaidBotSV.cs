@@ -21,7 +21,6 @@ using System.Text.RegularExpressions;
 using System.Security.Cryptography;
 using pkNX.Structures.FlatBuffers;
 using SysBot.Pokemon.Helpers;
-using Newtonsoft.Json.Linq;
 
 namespace SysBot.Pokemon.SV.BotRaid
 {
@@ -239,7 +238,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                     Seed = seedValue,
                     Species = (Species)pk.Species,
                     SpeciesForm = pk.Form,
-                    Title = $"Default Shiny {(Species)pk.Species}",
+                    Title = $"Shiny {(Species)pk.Species}",
                     DifficultyLevel = difficultyLevel,
                     StoryProgress = (GameProgressEnum)gameProgress,
                     CrystalType = crystalType,
@@ -1624,7 +1623,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                 DifficultyLevel = randomDifficultyLevel,
                 StoryProgress = (GameProgressEnum)gameProgress,
                 CrystalType = crystalType,
-                IsShiny = pk.IsShiny,
+                IsShiny = true,
                 PartyPK = battlers.Length > 0 ? battlers : [""]
             };
 
@@ -2795,6 +2794,10 @@ namespace SysBot.Pokemon.SV.BotRaid
                 Species = (ushort)_settings.ActiveRaids[RotationCount].Species,
                 Form = (byte)_settings.ActiveRaids[RotationCount].SpeciesForm
             };
+            if (_settings.ActiveRaids[RotationCount].IsShiny == true)
+                pk.SetIsShiny(true);
+            else
+                pk.SetIsShiny(false);
             if (_settings.ActiveRaids[RotationCount].SpriteAlternateArt && _settings.ActiveRaids[RotationCount].IsShiny)
             {
                 var altUrl = AltPokeImg(pk);
@@ -2808,7 +2811,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                     else
                     {
                         _settings.ActiveRaids[RotationCount].SpriteAlternateArt = false;
-                        turl = RaidExtensions<PK9>.PokeImg(pk, false, false, _settings.ActiveRaids[RotationCount].IsShiny);
+                        turl = RaidExtensions<PK9>.PokeImg(pk, false, false);
                         Log($"AltPokeImg URL was not valid. Setting SpriteAlternateArt to false.");
                     }
                 }
@@ -2816,12 +2819,12 @@ namespace SysBot.Pokemon.SV.BotRaid
                 {
                     Log($"Error while validating alternate image URL: {ex.Message}");
                     _settings.ActiveRaids[RotationCount].SpriteAlternateArt = false;
-                    turl = RaidExtensions<PK9>.PokeImg(pk, false, false, _settings.ActiveRaids[RotationCount].IsShiny);
+                    turl = RaidExtensions<PK9>.PokeImg(pk, false, false);
                 }
             }
             else
             {
-                turl = RaidExtensions<PK9>.PokeImg(pk, false, false, _settings.ActiveRaids[RotationCount].IsShiny);
+                turl = RaidExtensions<PK9>.PokeImg(pk, false, false);
             }
             if (_settings.ActiveRaids[RotationCount].Species is 0)
                 turl = "https://raw.githubusercontent.com/bdawg1989/sprites/main/imgs/combat.png";
@@ -3166,6 +3169,7 @@ namespace SysBot.Pokemon.SV.BotRaid
             {
                 currentRaid.Species = (Species)pk.Species;
                 currentRaid.SpeciesForm = pk.Form;
+                currentRaid.IsShiny = pk.IsShiny;
             }
 
             return Task.CompletedTask;
@@ -4446,7 +4450,7 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             // Process extra moves
             if (encounter.ExtraMoves.Length > 0)
             {
-                var extraMovesList = new System.Text.StringBuilder();
+                var extraMovesList = new StringBuilder();
                 bool hasExtraMoves = false;
 
                 foreach (var moveId in encounter.ExtraMoves)
