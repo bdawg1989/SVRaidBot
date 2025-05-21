@@ -36,21 +36,7 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         with:
           args: |
-            {
-              "embeds": [{
-                "title": "🔔 Neues Upstream Update verfügbar!",
-                "description": "Es gibt neue Änderungen im Upstream-Repository.",
-                "color": 3447003,
-                "fields": [
-                  {
-                    "name": "Commit Message",
-                    "value": "${{ steps.check-updates.outputs.upstream_message }}"
-                  },
-                  {
-                    "name": "Commit Hash",
-                    "value": "${{ steps.check-updates.outputs.upstream_commit }}"
-                  }
-                ],
-                "timestamp": "${{ steps.check-updates.outputs.timestamp }}"
-              }]
-            } 
+            🔔 Neues Upstream Update verfügbar!
+            Commit Message: ${{ steps.check-updates.outputs.upstream_message }}
+            Commit Hash: ${{ steps.check-updates.outputs.upstream_commit }}
+            Commit Link: https://github.com/bdawg1989/SVRaidBot/commit/${{ steps.check-updates.outputs.upstream_commit }} 
