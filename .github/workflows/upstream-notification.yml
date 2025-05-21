@@ -1,0 +1,56 @@
+name: Upstream Update Notification
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # Läuft alle 6 Stunden
+  workflow_dispatch:  # Ermöglicht manuelles Auslösen
+
+jobs:
+  check-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for Upstream Updates
+        id: check-updates
+        run: |
+          git remote add upstream https://github.com/bdawg1989/SVRaidBot.git
+          git fetch upstream
+          
+          # Vergleiche den aktuellen Branch mit dem Upstream
+          if [ "$(git rev-parse HEAD)" != "$(git rev-parse upstream/main)" ]; then
+            echo "has_updates=true" >> $GITHUB_OUTPUT
+            echo "upstream_commit=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
+            echo "upstream_message=$(git log -1 --pretty=%B upstream/main)" >> $GITHUB_OUTPUT
+          else
+            echo "has_updates=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Discord Notification
+        if: steps.check-updates.outputs.has_updates == 'true'
+        uses: Ilshidur/action-discord@master
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        with:
+          args: |
+            {
+              "embeds": [{
+                "title": "🔔 Neues Upstream Update verfügbar!",
+                "description": "Es gibt neue Änderungen im Upstream-Repository.",
+                "color": 3447003,
+                "fields": [
+                  {
+                    "name": "Commit Message",
+                    "value": "${{ steps.check-updates.outputs.upstream_message }}"
+                  },
+                  {
+                    "name": "Commit Hash",
+                    "value": "${{ steps.check-updates.outputs.upstream_commit }}"
+                  }
+                ],
+                "timestamp": "${{ steps.check-updates.outputs.timestamp }}"
+              }]
+            } 
