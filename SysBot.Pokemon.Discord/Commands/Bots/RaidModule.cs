@@ -95,8 +95,18 @@ namespace SysBot.Pokemon.Discord.Commands.Bots
             try
             {
                 var rewardsToShow = settings.EmbedToggles.RewardsToShow;
-                var (_, embed) = RaidInfoCommand(seedValue, (int)crystalType, selectedMap, storyProgressLevel, raidDeliveryGroupID, rewardsToShow, settings.EmbedToggles.MoveTypeEmojis, settings.EmbedToggles.CustomTypeEmojis, 0, isEvent);
-
+                var (_, embed) = RaidInfoCommand(
+                    seedValue,
+                    (int)crystalType,
+                    selectedMap,
+                    storyProgressLevel,
+                    raidDeliveryGroupID,
+                    rewardsToShow,
+                    settings.EmbedToggles.MoveTypeEmojis,
+                    settings.EmbedToggles.CustomTypeEmojis,
+                    0,
+                    isEvent,
+                    (int)settings.EmbedToggles.EmbedLanguage);
                 var instructionMessage = await ReplyAsync("React with ✅ to add the raid to the queue.");
                 var message = await ReplyAsync(embed: embed);
                 var checkmarkEmoji = new Emoji("✅");
@@ -373,7 +383,18 @@ namespace SysBot.Pokemon.Discord.Commands.Bots
             // Rest of your code remains the same...
             var selectedMap = IsBlueberry ? TeraRaidMapParent.Blueberry : (IsKitakami ? TeraRaidMapParent.Kitakami : TeraRaidMapParent.Paldea);
             var rewardsToShow = settings.EmbedToggles.RewardsToShow;
-            var (pk, raidEmbed) = RaidInfoCommand(seed, (int)crystalType, selectedMap, storyProgressLevel, raidDeliveryGroupID, rewardsToShow, settings.EmbedToggles.MoveTypeEmojis, settings.EmbedToggles.CustomTypeEmojis);
+            var (pk, raidEmbed) = RaidInfoCommand(
+            seed,
+            (int)crystalType,
+            selectedMap,
+            storyProgressLevel,
+            raidDeliveryGroupID,
+            rewardsToShow,
+            settings.EmbedToggles.MoveTypeEmojis,
+            settings.EmbedToggles.CustomTypeEmojis,
+            0,
+            isEvent,
+            (int)settings.EmbedToggles.EmbedLanguage);
             var description = string.Empty;
             var prevpath = "bodyparam.txt";
             var filepath = "RaidFilesSV\\bodyparam.txt";
@@ -601,7 +622,18 @@ namespace SysBot.Pokemon.Discord.Commands.Bots
 
             int effectiveQueuePosition = 1;
             var rewardsToShow = settings.EmbedToggles.RewardsToShow;
-            var (pk, raidEmbed) = RaidInfoCommand(seed, (int)crystalType, selectedMap, storyProgressLevel, raidDeliveryGroupID, rewardsToShow, settings.EmbedToggles.MoveTypeEmojis, settings.EmbedToggles.CustomTypeEmojis, effectiveQueuePosition);
+            var (pk, raidEmbed) = RaidInfoCommand(
+            seed,
+            (int)crystalType,
+            selectedMap,
+            storyProgressLevel,
+            raidDeliveryGroupID,
+            rewardsToShow,
+            settings.EmbedToggles.MoveTypeEmojis,
+            settings.EmbedToggles.CustomTypeEmojis,
+            effectiveQueuePosition,
+            isEvent,
+            (int)settings.EmbedToggles.EmbedLanguage);
             var description = string.Empty;
             var prevpath = "bodyparam.txt";
             var filepath = "RaidFilesSV\\bodyparam.txt";

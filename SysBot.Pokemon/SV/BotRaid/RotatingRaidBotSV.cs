@@ -21,6 +21,7 @@ using System.Text.RegularExpressions;
 using System.Security.Cryptography;
 using pkNX.Structures.FlatBuffers;
 using SysBot.Pokemon.Helpers;
+using SysBot.Pokemon.SV.BotRaid.Language;
 
 namespace SysBot.Pokemon.SV.BotRaid
 {
@@ -219,7 +220,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                 (PK9 pk, Embed embed) = RaidInfoCommand(
                     seedValue, contentType, map, (int)gameProgress, raidDeliveryGroupID,
                     _settings.EmbedToggles.RewardsToShow, _settings.EmbedToggles.MoveTypeEmojis,
-                    _settings.EmbedToggles.CustomTypeEmojis, 0, false
+                    _settings.EmbedToggles.CustomTypeEmojis, 0, false, (int)_settings.EmbedToggles.EmbedLanguage
                 );
 
                 // Get the Tera type from the embed
@@ -554,7 +555,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                                     if (prepareAttempts >= 2)
                                     {
                                         Log("Failed to prepare the raid after multiple attempts, rebooting game");
-                                        await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
+                                        await PerformRebootAndReset(token).ConfigureAwait(false);
                                         break;
                                     }
                                 }
@@ -568,7 +569,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                                 if (prepareAttempts >= 2)
                                 {
                                     Log("Error preparing raid, rebooting game");
-                                    await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
+                                    await PerformRebootAndReset(token).ConfigureAwait(false);
                                     break;
                                 }
                             }
@@ -765,56 +766,55 @@ namespace SysBot.Pokemon.SV.BotRaid
         }
 
         /// <summary>
-        /// Locates an empty raid den where seeds can be injected
+        /// Locates the nearest active den to the player for seed injection
         /// </summary>
         private async Task LocateSeedIndex(CancellationToken token)
         {
-            const int kitakamiDensCount = 25;
-            int upperBound = kitakamiDensCount == 25 ? 94 : 95;
-            int startIndex = kitakamiDensCount == 25 ? 94 : 95;
-
-            // Check Paldea raids
-            var data = await SwitchConnection.ReadBytesAbsoluteAsync(_raidBlockPointerP, 2304, token).ConfigureAwait(false);
-            for (int i = 0; i < 69; i++)
+            try
             {
-                var seed = BitConverter.ToUInt32(data.AsSpan(0x20 + i * 0x20, 4));
-                if (seed == 0)
+                var playerLocation = await GetPlayersLocation(token);
+                var currentRegion = await DetectCurrentRegion(token);
+
+                Log($"Player location: ({playerLocation.Item1:F2}, {playerLocation.Item2:F2}, {playerLocation.Item3:F2})");
+                Log($"Current region: {currentRegion}");
+
+                // Get all ACTIVE raid locations (only dens that are actually visible/active in the game)
+                var activeRaids = await GetActiveRaidLocations(currentRegion, token);
+
+                if (activeRaids.Count == 0)
                 {
-                    _seedIndexToReplace = i;
-                    Log($"Raid Den Located at {i} in Paldea.");
+                    Log("No active dens found in the current region.");
+                    _seedIndexToReplace = -1;
                     return;
                 }
-            }
 
-            // Check Kitakami raids
-            data = await SwitchConnection.ReadBytesAbsoluteAsync(_raidBlockPointerK + 0x10, 0xC80, token).ConfigureAwait(false);
-            for (int i = 69; i < upperBound; i++)
+                Log($"Found {activeRaids.Count} active dens in {currentRegion}");
+
+                // Find the nearest active den to the player's current location
+                var nearestActiveDen = activeRaids
+                    .Select(raid => new
+                    {
+                        Raid = raid,
+                        Distance = CalculateDistance(playerLocation, (raid.Coordinates[0], raid.Coordinates[1], raid.Coordinates[2]))
+                    })
+                    .OrderBy(x => x.Distance)
+                    .First();
+
+                _seedIndexToReplace = nearestActiveDen.Raid.Index;
+
+                Log($"Nearest active den: {nearestActiveDen.Raid.DenIdentifier} at index {_seedIndexToReplace} (distance: {nearestActiveDen.Distance:F2})");
+                Log($"Current seed at that location: {nearestActiveDen.Raid.Seed:X8}");
+                Log($"Target den selected - will teleport during next seed injection phase");
+
+                // Update region flags based on the current region
+                IsKitakami = currentRegion == TeraRaidMapParent.Kitakami;
+                IsBlueberry = currentRegion == TeraRaidMapParent.Blueberry;
+            }
+            catch (Exception ex)
             {
-                var seed = BitConverter.ToUInt32(data.AsSpan((i - 69) * 0x20, 4));
-                if (seed == 0)
-                {
-                    _seedIndexToReplace = i;
-                    Log($"Raid Den Located at {i} in Kitakami.");
-                    IsKitakami = true;
-                    return;
-                }
+                Log($"Error in LocateSeedIndex: {ex.Message}");
+                _seedIndexToReplace = -1;
             }
-
-            // Check Blueberry raids
-            data = await SwitchConnection.ReadBytesAbsoluteAsync(_raidBlockPointerB + 0x10, 0xA00, token).ConfigureAwait(false);
-            for (int i = startIndex; i < 118; i++)
-            {
-                var seed = BitConverter.ToUInt32(data.AsSpan((i - startIndex) * 0x20, 4));
-                if (seed == 0)
-                {
-                    _seedIndexToReplace = i - 1;
-                    Log($"Raid Den Located at {i} in Blueberry.");
-                    IsBlueberry = true;
-                    return;
-                }
-            }
-
-            Log("Index not located.");
         }
 
         /// <summary>
@@ -1087,40 +1087,22 @@ namespace SysBot.Pokemon.SV.BotRaid
             DateTime battleStartTime = DateTime.Now;
             bool hasPerformedAction1 = false;
 
-            // Track last connection check time and status
-            DateTime lastConnectionCheck = DateTime.Now;
-            bool isConnected = true;
-
             // Main battle loop
-            while (isConnected)
+            while (true)
             {
-                // Check connection only every 5 seconds
-                if ((DateTime.Now - lastConnectionCheck).TotalSeconds >= 5)
-                {
-                    isConnected = await IsConnectedToLobby(token).ConfigureAwait(false);
-                    lastConnectionCheck = DateTime.Now;
-
-                    if (!isConnected)
-                    {
-                        Log("Lost connection to lobby, stopping battle actions.");
-                        break;
-                    }
-                }
-
-                // Always check raid status on each iteration
+                // Check if we're still in raid
                 bool inRaid = await IsInRaid(token).ConfigureAwait(false);
                 if (!inRaid)
                 {
                     Log("Not in raid anymore, stopping battle actions.");
-                    return false;
+                    return true; // Return true as this is normal completion
                 }
 
-                TimeSpan timeInBattle = DateTime.Now - battleStartTime;
-
                 // Check for timeout (10 minutes)
+                TimeSpan timeInBattle = DateTime.Now - battleStartTime;
                 if (timeInBattle.TotalMinutes >= 10)
                 {
-                    Log("Battle timed out after 10 minutes.");
+                    Log("Battle exceeded 10 minutes - restarting game.");
                     return false;
                 }
 
@@ -1162,9 +1144,6 @@ namespace SysBot.Pokemon.SV.BotRaid
                 // Small delay to prevent tight loops
                 await Task.Delay(1000, token).ConfigureAwait(false);
             }
-
-            // Raid ended
-            return true;
         }
 
         /// <summary>
@@ -1206,8 +1185,40 @@ namespace SysBot.Pokemon.SV.BotRaid
             Log("Returning to overworld...");
             await Task.Delay(2_500, token).ConfigureAwait(false);
 
-            while (!await IsOnOverworld(_overworldOffset, token).ConfigureAwait(false))
-                await Click(A, 1_000, token).ConfigureAwait(false);
+            if (!await RecoverToOverworld(token).ConfigureAwait(false))
+            {
+                Log("Failed to return to overworld after raid, rebooting game");
+                await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
+
+                // After rebooting, attempt to continue with the raid rotation
+                if (ready)
+                {
+                    await StartGameRaid(_hub.Config, token).ConfigureAwait(false);
+
+                    if (_settings.RaidSettings.KeepDaySeed)
+                        await OverrideTodaySeed(token).ConfigureAwait(false);
+
+                    return;
+                }
+                else
+                {
+                    if (_settings.ActiveRaids.Count > 1)
+                    {
+                        RotationCount = (RotationCount + 1) % _settings.ActiveRaids.Count;
+                        Log($"Moving on to next rotation for {_settings.ActiveRaids[RotationCount].Species}.");
+                        await StartGameRaid(_hub.Config, token).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await StartGame(_hub.Config, token).ConfigureAwait(false);
+                    }
+
+                    if (_settings.RaidSettings.KeepDaySeed)
+                        await OverrideTodaySeed(token).ConfigureAwait(false);
+
+                    return;
+                }
+            }
 
             await LocateSeedIndex(token).ConfigureAwait(false);
             await CountRaids(trainers, token).ConfigureAwait(false);
@@ -1472,24 +1483,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                 _seedIndexToReplace = index;
                 Log($"Successfully injected seed {seed:X8} at index {index}");
 
-                // Handle teleportation for event/distribution raids
-                if (crystalType == TeraCrystalType.Might || crystalType == TeraCrystalType.Distribution)
-                {
-                    // Get the appropriate location resource based on the current region
-                    string denLocationResource = IsKitakami
-                        ? "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_kitakami.json"
-                        : IsBlueberry
-                            ? "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_blueberry.json"
-                            : "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_base.json";
-
-                    var denLocations = LoadDenLocations(denLocationResource);
-
-                    if (denIdentifier != null && denLocations.TryGetValue(denIdentifier, out var coordinates))
-                    {
-                        await TeleportToDen(coordinates[0], coordinates[1], coordinates[2], token);
-                        Log($"Successfully teleported to den: {denIdentifier}");
-                    }
-                }
+                await TeleportToInjectedDenLocation(index, crystalType, speciesName, groupID, denIdentifier, token);
 
                 return true;
             }
@@ -1497,6 +1491,54 @@ namespace SysBot.Pokemon.SV.BotRaid
             {
                 Log($"Error in OverrideSeedIndex: {ex.Message}");
                 return false;
+            }
+        }
+
+        /// <summary>
+        /// Teleports to the den location where we injected the seed 
+        /// </summary>
+        private async Task TeleportToInjectedDenLocation(int index, TeraCrystalType crystalType, string speciesName, int? groupID, string? denIdentifier, CancellationToken token)
+        {
+            try
+            {
+                // Get the appropriate location resource based on the current region
+                string denLocationResource = IsKitakami
+                    ? "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_kitakami.json"
+                    : IsBlueberry
+                        ? "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_blueberry.json"
+                        : "SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_base.json";
+
+                var denLocations = LoadDenLocations(denLocationResource);
+
+                // For event raids, use the specific den identifier
+                if (crystalType == TeraCrystalType.Might || crystalType == TeraCrystalType.Distribution)
+                {
+                    if (denIdentifier != null && denLocations.TryGetValue(denIdentifier, out var eventCoordinates))
+                    {
+                        await TeleportToDen(eventCoordinates[0], eventCoordinates[1], eventCoordinates[2], token);
+                        Log($"Successfully teleported to event den: {denIdentifier}");
+                        return;
+                    }
+                }
+
+                // For regular raids, find the den location by matching the index with active raid data
+                var currentRegion = await DetectCurrentRegion(token);
+                var activeRaids = await GetActiveRaidLocations(currentRegion, token);
+
+                var targetRaid = activeRaids.FirstOrDefault(raid => raid.Index == index);
+                if (targetRaid.DenIdentifier != null)
+                {
+                    await TeleportToDen(targetRaid.Coordinates[0], targetRaid.Coordinates[1], targetRaid.Coordinates[2], token);
+                    Log($"Successfully teleported to den: {targetRaid.DenIdentifier} at index {index}");
+                }
+                else
+                {
+                    Log($"Could not find coordinates for den at index {index}. No teleportation performed.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Error during teleportation: {ex.Message}");
             }
         }
 
@@ -1607,7 +1649,7 @@ namespace SysBot.Pokemon.SV.BotRaid
             (PK9 pk, Embed embed) = RaidInfoCommand(
                 seedValue, contentType, map, (int)gameProgress, raidDeliveryGroupID,
                 emptyRewardsToShow, defaultMoveTypeEmojis, emptyCustomTypeEmojis,
-                defaultQueuePosition, defaultIsEvent
+                defaultQueuePosition, defaultIsEvent, (int)_settings.EmbedToggles.EmbedLanguage
             );
 
             string teraType = ExtractTeraTypeFromEmbed(embed);
@@ -1918,9 +1960,32 @@ namespace SysBot.Pokemon.SV.BotRaid
         /// </summary>
         private async Task<int> PrepareForRaid(CancellationToken token)
         {
-            if (!await IsOnOverworld(_overworldOffset, token).ConfigureAwait(false))
+            try
             {
-                Log("Not on overworld, reopening game.");
+                (bool valid, ulong freshOffset) = await ValidatePointerAll(Offsets.OverworldPointer, token).ConfigureAwait(false);
+                if (valid)
+                {
+                    if (await IsOnOverworld(freshOffset, token).ConfigureAwait(false))
+                    {
+                        _overworldOffset = freshOffset;
+                    }
+                    else
+                    {
+                        Log("Not on overworld (validated pointer check), reopening game.");
+                        await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
+                        return 0;
+                    }
+                }
+                else
+                {
+                    Log("Failed to validate overworld pointer, reopening game.");
+                    await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
+                    return 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Error validating overworld pointer: {ex.Message}");
                 await ReOpenGame(_hub.Config, token).ConfigureAwait(false);
                 return 0;
             }
@@ -2047,7 +2112,6 @@ namespace SysBot.Pokemon.SV.BotRaid
                 }
             }
 
-            Log("Preparing lobby...");
             if (!await RecoverToOverworld(token).ConfigureAwait(false))
                 return 0;
             await Task.Delay(0_500, token).ConfigureAwait(false);
@@ -2055,6 +2119,7 @@ namespace SysBot.Pokemon.SV.BotRaid
             await Task.Delay(1_500, token).ConfigureAwait(false);
             if (!await RecoverToOverworld(token).ConfigureAwait(false))
                 return 0;
+            Log("Preparing lobby...");
             await Click(A, 3_000, token).ConfigureAwait(false);
             await Click(A, 3_000, token).ConfigureAwait(false);
 
@@ -2683,11 +2748,34 @@ namespace SysBot.Pokemon.SV.BotRaid
         /// </summary>
         private string GetTypeAdvantage(string teraType)
         {
-            if (_typeAdvantages.TryGetValue(teraType.ToLower(), out string advantage))
+            string englishTypeName = GetEnglishTypeNameFromLocalized(teraType);
+
+            if (_typeAdvantages.TryGetValue(englishTypeName.ToLower(), out string advantage))
             {
                 return advantage;
             }
             return "Unknown Type";
+        }
+
+        /// <summary>
+        /// Maps localized type names to English type names for consistent lookup
+        /// </summary>
+        private string GetEnglishTypeNameFromLocalized(string teraType)
+        {
+            if (_typeAdvantages.ContainsKey(teraType.ToLower()))
+                return teraType.ToLower();
+            var englishStrings = GameInfo.GetStrings(2);
+            var localizedStrings = GameInfo.GetStrings((int)_settings.EmbedToggles.EmbedLanguage);
+            for (int i = 0; i < localizedStrings.Types.Count; i++)
+            {
+                if (string.Equals(teraType, localizedStrings.Types[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    return englishStrings.Types[i].ToLower();
+                }
+            }
+
+            // If not found, return the original (it might still work if close enough)
+            return teraType.ToLower();
         }
 
         /// <summary>
@@ -2736,7 +2824,10 @@ namespace SysBot.Pokemon.SV.BotRaid
                 await Task.Delay((int)_settings.EmbedToggles.RequestEmbedTime, token).ConfigureAwait(false);
             }
 
-            // Description can only be up to 4096 characters.
+            // Get the selected language from settings
+            var language = _settings.EmbedToggles.EmbedLanguage;
+
+            // Description can only be up to 4096 characters
             var description = _settings.EmbedToggles.RaidEmbedDescription.Length > 0
                 ? string.Join("\n", _settings.EmbedToggles.RaidEmbedDescription)
                 : "";
@@ -2844,18 +2935,11 @@ namespace SysBot.Pokemon.SV.BotRaid
             long futureUnixTime = futureTime.ToUnixTimeSeconds();
 
             // Create the future time message using Discord's timestamp formatting
-            string futureTimeMessage = $"**Raid Posting: <t:{futureUnixTime}:R>**";
+            string futureTimeMessage = $"**{EmbedLanguageManager.GetLocalizedText("Raid Posting", language)}: <t:{futureUnixTime}:R>**";
 
             // Initialize the EmbedBuilder object
             var embed = new EmbedBuilder()
             {
-                Title = disband
-                    ? $"**Raid canceled: [{_teraRaidCode}]**"
-                    : upnext && _settings.RaidSettings.TotalRaidsToHost != 0
-                        ? $"Raid Ended - Preparing Next Raid!"
-                        : upnext && _settings.RaidSettings.TotalRaidsToHost == 0
-                            ? $"Raid Ended - Preparing Next Raid!"
-                            : "",
                 Color = embedColor,
                 Description = disband
                     ? message
@@ -2870,6 +2954,20 @@ namespace SysBot.Pokemon.SV.BotRaid
                 ImageUrl = imageBytes != null ? $"attachment://{fileName}" : null,
             };
 
+            // Set title based on condition
+            if (disband)
+            {
+                embed.Title = $"**{EmbedLanguageManager.GetLocalizedText("Raid canceled", language)}: [{_teraRaidCode}]**";
+            }
+            else if (upnext && _settings.RaidSettings.TotalRaidsToHost != 0)
+            {
+                embed.Title = $"{EmbedLanguageManager.GetLocalizedText("Raid Ended - Preparing Next Raid", language)}!";
+            }
+            else if (upnext && _settings.RaidSettings.TotalRaidsToHost == 0)
+            {
+                embed.Title = $"{EmbedLanguageManager.GetLocalizedText("Raid Ended - Preparing Next Raid", language)}!";
+            }
+
             if (!raidstart && !upnext && code != "Free For All")
                 await CurrentRaidInfo(null, code, false, false, false, false, turl, false, token).ConfigureAwait(false);
 
@@ -2882,10 +2980,16 @@ namespace SysBot.Pokemon.SV.BotRaid
                 // Calculate uptime
                 TimeSpan uptime = DateTime.Now - StartTime;
 
-                // Check for singular or plural days/hours
-                string dayLabel = uptime.Days == 1 ? "day" : "days";
-                string hourLabel = uptime.Hours == 1 ? "hour" : "hours";
-                string minuteLabel = uptime.Minutes == 1 ? "minute" : "minutes";
+                // Format day/hour/minute labels with appropriate localization
+                string dayLabel = uptime.Days == 1
+                    ? EmbedLanguageManager.GetLocalizedText("day", language)
+                    : EmbedLanguageManager.GetLocalizedText("days", language);
+                string hourLabel = uptime.Hours == 1
+                    ? EmbedLanguageManager.GetLocalizedText("hour", language)
+                    : EmbedLanguageManager.GetLocalizedText("hours", language);
+                string minuteLabel = uptime.Minutes == 1
+                    ? EmbedLanguageManager.GetLocalizedText("minute", language)
+                    : EmbedLanguageManager.GetLocalizedText("minutes", language);
 
                 // Format the uptime string, omitting the part if the value is 0
                 string uptimeFormatted = "";
@@ -2904,70 +3008,68 @@ namespace SysBot.Pokemon.SV.BotRaid
 
                 // Trim any excess whitespace from the string
                 uptimeFormatted = uptimeFormatted.Trim();
+
+                string footerText = $"{EmbedLanguageManager.GetLocalizedText("Completed Raids", language)}: {_raidCount} (W: {_winCount} | L: {_lossCount})\n" +
+                                   $"{EmbedLanguageManager.GetLocalizedText("ActiveRaids", language)}: {raidsInRotationCount} | " +
+                                   $"{EmbedLanguageManager.GetLocalizedText("Uptime", language)}: {uptimeFormatted}\n" +
+                                   disclaimer;
+
                 embed.WithFooter(new EmbedFooterBuilder()
                 {
-                    Text = $"Completed Raids: {_raidCount} (W: {_winCount} | L: {_lossCount})\nActiveRaids: {raidsInRotationCount} | Uptime: {uptimeFormatted}\n" + disclaimer,
+                    Text = footerText,
                     IconUrl = programIconUrl
                 });
             }
 
             // Prepare the tera icon URL
-            string teraType = RaidEmbedInfoHelpers.RaidSpeciesTeraType.ToLower();
-            string folderName = _settings.EmbedToggles.SelectedTeraIconType == TeraIconType.Icon1 ? "icon1" : "icon2"; // Add more conditions for more icon types
-            string teraIconUrl = $"https://raw.githubusercontent.com/bdawg1989/sprites/main/teraicons/{folderName}/{teraType}.png";
+            string teraType = RaidEmbedInfoHelpers.RaidSpeciesTeraType;
+            string englishTeraType = GetEnglishTypeNameFromLocalized(teraType).ToLower();
+            string folderName = _settings.EmbedToggles.SelectedTeraIconType == TeraIconType.Icon1 ? "icon1" : "icon2";
+            string teraIconUrl = $"https://raw.githubusercontent.com/bdawg1989/sprites/main/teraicons/{folderName}/{englishTeraType}.png";
 
             // Only include author (header) if not posting 'upnext' embed with the 'Preparing Raid' title
             if (!(upnext && _settings.RaidSettings.TotalRaidsToHost == 0))
             {
-                // Set the author (header) of the embed with the tera icon
-                embed.WithAuthor(new EmbedAuthorBuilder()
-                {
-                    Name = RaidEmbedInfoHelpers.RaidEmbedTitle,
-                    IconUrl = teraIconUrl
-                });
+                // Set the author (header) of the embed with the tera icon using localization
+                embed.WithLocalizedAuthor(RaidEmbedInfoHelpers.RaidEmbedTitle, teraIconUrl, language);
             }
 
             if (!disband && !upnext && !raidstart)
             {
-                StringBuilder statsField = new();
-                statsField.AppendLine($"**Level**: {RaidEmbedInfoHelpers.RaidLevel}");
-                statsField.AppendLine($"**Gender**: {RaidEmbedInfoHelpers.RaidSpeciesGender}");
-                statsField.AppendLine($"**Nature**: {RaidEmbedInfoHelpers.RaidSpeciesNature}");
-                statsField.AppendLine($"**Ability**: {RaidEmbedInfoHelpers.RaidSpeciesAbility}");
-                statsField.AppendLine($"**IVs**: {RaidEmbedInfoHelpers.RaidSpeciesIVs}");
-                statsField.AppendLine($"**Scale**: {RaidEmbedInfoHelpers.ScaleText}({RaidEmbedInfoHelpers.ScaleNumber})");
+                // Build localized stats field
+                string statsField = EmbedLocalizationHelper.BuildLocalizedStatsField(
+                    language,
+                    RaidEmbedInfoHelpers.RaidLevel.ToString(),
+                    RaidEmbedInfoHelpers.RaidSpeciesGender,
+                    RaidEmbedInfoHelpers.RaidSpeciesNature,
+                    RaidEmbedInfoHelpers.RaidSpeciesAbility,
+                    RaidEmbedInfoHelpers.RaidSpeciesIVs,
+                    RaidEmbedInfoHelpers.ScaleText,
+                    RaidEmbedInfoHelpers.ScaleNumber.ToString(),
+                    _settings.EmbedToggles.IncludeSeed,
+                    _settings.ActiveRaids[RotationCount].Seed,
+                    _settings.ActiveRaids[RotationCount].DifficultyLevel,
+                    (int)_settings.ActiveRaids[RotationCount].StoryProgress
+                );
 
-                if (_settings.EmbedToggles.IncludeSeed)
-                {
-                    var storyProgressValue = _settings.ActiveRaids[RotationCount].StoryProgress switch
-                    {
-                        GameProgressEnum.Unlocked6Stars => 6,
-                        GameProgressEnum.Unlocked5Stars => 5,
-                        GameProgressEnum.Unlocked4Stars => 4,
-                        GameProgressEnum.Unlocked3Stars => 3,
-                        _ => 6,
-                    };
-                    statsField.AppendLine($"**Seed**: `{_settings.ActiveRaids[RotationCount].Seed} {_settings.ActiveRaids[RotationCount].DifficultyLevel} {storyProgressValue}`");
-                }
-
-                embed.AddField("**__Stats__**", statsField.ToString(), true);
+                embed.AddLocalizedField("**__Stats__**", statsField, true, language);
                 embed.AddField("\u200b", "\u200b", true);
             }
 
             if (!disband && !upnext && !raidstart && _settings.EmbedToggles.IncludeMoves)
             {
-                embed.AddField("**__Moves__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.ExtraMoves}")
+                embed.AddLocalizedField("**__Moves__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.ExtraMoves}")
                     ? string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.Moves}")
-                        ? "No Moves To Display"
+                        ? EmbedLanguageManager.GetLocalizedText("No Moves To Display", language)
                         : $"{RaidEmbedInfoHelpers.Moves}"
-                    : $"{RaidEmbedInfoHelpers.Moves}\n**Extra Moves:**\n{RaidEmbedInfoHelpers.ExtraMoves}", true);
+                    : $"{RaidEmbedInfoHelpers.Moves}\n**{EmbedLanguageManager.GetLocalizedText("Extra Moves", language)}:**\n{RaidEmbedInfoHelpers.ExtraMoves}", true, language);
             }
 
             if (!disband && !upnext && !raidstart && !_settings.EmbedToggles.IncludeMoves)
             {
-                embed.AddField(" **__Special Rewards__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.SpecialRewards}")
-                    ? "No Rewards To Display"
-                    : $"{RaidEmbedInfoHelpers.SpecialRewards}", true);
+                embed.AddLocalizedField("**__Special Rewards__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.SpecialRewards}")
+                    ? EmbedLanguageManager.GetLocalizedText("No Rewards To Display", language)
+                    : $"{RaidEmbedInfoHelpers.SpecialRewards}", true, language);
             }
 
             // Fetch the type advantage using the static RaidSpeciesTeraType from RaidEmbedInfo
@@ -2976,15 +3078,15 @@ namespace SysBot.Pokemon.SV.BotRaid
             // Only include the Type Advantage if not posting 'upnext' embed with the 'Preparing Raid' title and if the raid isn't starting or disbanding
             if (!disband && !upnext && !raidstart && _settings.EmbedToggles.IncludeTypeAdvantage)
             {
-                embed.AddField(" **__Type Advantage__**", typeAdvantage, true);
+                embed.AddLocalizedField("**__Type Advantage__**", typeAdvantage, true, language);
                 embed.AddField("\u200b", "\u200b", true);
             }
 
             if (!disband && !upnext && !raidstart && _settings.EmbedToggles.IncludeMoves)
             {
-                embed.AddField(" **__Special Rewards__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.SpecialRewards}")
-                    ? "No Rewards To Display"
-                    : $"{RaidEmbedInfoHelpers.SpecialRewards}", true);
+                embed.AddLocalizedField("**__Special Rewards__**", string.IsNullOrEmpty($"{RaidEmbedInfoHelpers.SpecialRewards}")
+                    ? EmbedLanguageManager.GetLocalizedText("No Rewards To Display", language)
+                    : $"{RaidEmbedInfoHelpers.SpecialRewards}", true, language);
             }
 
             if (!disband && !upnext && !raidstart && _settings.ActiveRaids[RotationCount].DifficultyLevel == 7)
@@ -2993,7 +3095,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                 string mechanicsInfo = GetRaidBossMechanics();
                 if (!string.IsNullOrEmpty(mechanicsInfo))
                 {
-                    embed.AddField("**__7★ Raid Mechanics__**", mechanicsInfo, false);
+                    embed.AddLocalizedField("**__7★ Raid Mechanics__**", mechanicsInfo, false, language);
                 }
             }
 
@@ -3001,21 +3103,21 @@ namespace SysBot.Pokemon.SV.BotRaid
             {
                 if (code == "Free For All")
                 {
-                    embed.AddField(
-                        _settings.EmbedToggles.IncludeCountdown
-                            ? $"**__Raid Starting__**:\n**<t:{DateTimeOffset.Now.ToUnixTimeSeconds() + 160}:R>**"
-                            : $"**Waiting in lobby!**",
-                        $"**FREE FOR ALL**",
-                        true);
+                    string fieldName = _settings.EmbedToggles.IncludeCountdown
+                        ? $"**__{EmbedLanguageManager.GetLocalizedText("Raid Starting", language)}__**:\n**<t:{DateTimeOffset.Now.ToUnixTimeSeconds() + 160}:R>**"
+                        : $"**{EmbedLanguageManager.GetLocalizedText("Waiting in lobby", language)}!**";
+
+                    string fieldValue = $"**{EmbedLanguageManager.GetLocalizedText("Free For All", language)}**";
+
+                    embed.AddField(fieldName, fieldValue, true);
                 }
                 else
                 {
-                    embed.AddField(
-                        _settings.EmbedToggles.IncludeCountdown
-                            ? $"**__Raid Starting__**:\n**<t:{DateTimeOffset.Now.ToUnixTimeSeconds() + 160}:R>**"
-                            : $"**Waiting in lobby!**",
-                        "\u200B",
-                        true);
+                    string fieldName = _settings.EmbedToggles.IncludeCountdown
+                        ? $"**__{EmbedLanguageManager.GetLocalizedText("Raid Starting", language)}__**:\n**<t:{DateTimeOffset.Now.ToUnixTimeSeconds() + 160}:R>**"
+                        : $"**{EmbedLanguageManager.GetLocalizedText("Waiting in lobby", language)}!**";
+
+                    embed.AddField(fieldName, "\u200B", true);
                 }
             }
 
@@ -3023,22 +3125,23 @@ namespace SysBot.Pokemon.SV.BotRaid
             {
                 var players = string.Empty;
                 if (names.Count == 0)
-                    players = "Our party dipped on us :/";
+                    players = EmbedLanguageManager.GetLocalizedText("Our party dipped on us :/", language);
                 else
                 {
                     // Add host as Player 1
-                    players += $"Player 1 (Host) - **{_hostSAV.OT}**\n";
+                    players += $"{EmbedLanguageManager.GetLocalizedText("Player", language)} 1 ({EmbedLanguageManager.GetLocalizedText("Host", language)}) - **{_hostSAV.OT}**\n";
 
                     // Add other players starting at Player 2
                     int i = 2;
                     names.ForEach(x =>
                     {
-                        players += $"Player {i} - **{x}**\n";
+                        players += $"{EmbedLanguageManager.GetLocalizedText("Player", language)} {i} - **{x}**\n";
                         i++;
                     });
                 }
 
-                embed.AddField($"**Raid #{_raidCount} is starting!**", players);
+                string fieldName = $"**{EmbedLanguageManager.GetLocalizedText("Raid", language)} #{_raidCount} {EmbedLanguageManager.GetLocalizedText("is starting", language)}!**";
+                embed.AddField(fieldName, players);
             }
 
             if (imageBytes != null)
@@ -3051,9 +3154,12 @@ namespace SysBot.Pokemon.SV.BotRaid
             if (!disband && names is null && !upnext && !raidstart && code != "Free For All")
             {
                 // Add a field with code information
-                embed.AddField("**__Raid Code__**",
-                    "React with ✅ to receive the raid code via DM.\n" +
-                    "The code will be sent to you privately.", false);
+                string fieldName = $"**__{EmbedLanguageManager.GetLocalizedText("Raid Code", language)}__**";
+                string fieldValue = $"{EmbedLanguageManager.GetLocalizedText("React with", language)} ✅ " +
+                                  $"{EmbedLanguageManager.GetLocalizedText("to receive the raid code via DM", language)}.\n" +
+                                  $"{EmbedLanguageManager.GetLocalizedText("The code will be sent to you privately", language)}.";
+
+                embed.AddField(fieldName, fieldValue, false);
             }
 
             // Send the embed to all channels and get list of sent messages
@@ -3130,7 +3236,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                 TeraCrystalType.Base => 0,    // Base crystal = regular raid
                 TeraCrystalType.Black => 1,   // Black crystal = 1
                 TeraCrystalType.Distribution => 2, // Distribution = 2
-                TeraCrystalType.Might => 1,   // Might events use contentType 1
+                TeraCrystalType.Might => 3,   // Might = 3
                 _ => 0,
             };
 
@@ -3151,14 +3257,17 @@ namespace SysBot.Pokemon.SV.BotRaid
             bool isEvent = currentRaid.CrystalType == TeraCrystalType.Distribution ||
                           currentRaid.CrystalType == TeraCrystalType.Might;
 
-            Log($"Generating raid info with parameters: Seed={seedValue}, ContentType={contentType}, Map={map}, " +
-                $"StoryProgress={storyProgressLevel}, GroupID={raidDeliveryGroupID}, IsEvent={isEvent}, CrystalType={currentRaid.CrystalType}");
+            // Get the selected language ID
+            int languageId = (int)_settings.EmbedToggles.EmbedLanguage;
 
-            // Generate accurate raid data using RaidInfoCommand
+            Log($"Generating raid info with parameters: Seed={seedValue}, ContentType={contentType}, Map={map}, " +
+                $"StoryProgress={storyProgressLevel}, GroupID={raidDeliveryGroupID}, IsEvent={isEvent}, CrystalType={currentRaid.CrystalType}, Language={languageId}");
+
+            // Generate accurate raid data using RaidInfoCommand, passing the language ID
             (PK9 pk, Embed embed) = RaidInfoCommand(
                 seedValue, contentType, map, storyProgressLevel, raidDeliveryGroupID,
                 _settings.EmbedToggles.RewardsToShow, _settings.EmbedToggles.MoveTypeEmojis,
-                _settings.EmbedToggles.CustomTypeEmojis, 0, isEvent
+                _settings.EmbedToggles.CustomTypeEmojis, 0, isEvent, languageId
             );
 
             // Populate RaidEmbedInfoHelpers with data from the generated embed and PK9
@@ -3202,7 +3311,7 @@ namespace SysBot.Pokemon.SV.BotRaid
                     if (mechanicsInfo.ExtraActions.Count > 0)
                     {
                         mechanics.AppendLine("**Other Actions:**");
-                        var moveNames = GameInfo.GetStrings(1).Move;
+                        var moveNames = GameInfo.GetStrings("en").Move;
 
                         foreach (var (action, timing, value, moveId) in mechanicsInfo.ExtraActions)
                         {
@@ -3373,19 +3482,19 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
 
             var raidInfo = new
             {
-                RaidEmbedTitle = CleanEmojiStrings(RaidEmbedInfoHelpers.RaidEmbedTitle),
+                RaidEmbedTitle = CleanEmojiStrings(RaidEmbedEnglishHelpers.RaidEmbedTitle),
                 RaidSpecies = RaidEmbedInfoHelpers.RaidSpecies.ToString(),
                 RaidEmbedInfoHelpers.RaidSpeciesForm,
-                RaidSpeciesGender = CleanEmojiStrings(RaidEmbedInfoHelpers.RaidSpeciesGender),
+                RaidSpeciesGender = CleanEmojiStrings(RaidEmbedEnglishHelpers.RaidSpeciesGender),
                 RaidEmbedInfoHelpers.RaidLevel,
                 RaidEmbedInfoHelpers.RaidSpeciesIVs,
-                RaidEmbedInfoHelpers.RaidSpeciesAbility,
-                RaidEmbedInfoHelpers.RaidSpeciesNature,
-                RaidEmbedInfoHelpers.RaidSpeciesTeraType,
-                Moves = CleanEmojiStrings(RaidEmbedInfoHelpers.Moves),
-                ExtraMoves = CleanEmojiStrings(RaidEmbedInfoHelpers.ExtraMoves),
-                RaidEmbedInfoHelpers.ScaleText,
-                SpecialRewards = CleanEmojiStrings(RaidEmbedInfoHelpers.SpecialRewards),
+                RaidEmbedEnglishHelpers.RaidSpeciesAbility,
+                RaidEmbedEnglishHelpers.RaidSpeciesNature,
+                RaidEmbedEnglishHelpers.RaidSpeciesTeraType,
+                Moves = CleanEmojiStrings(RaidEmbedEnglishHelpers.Moves),
+                ExtraMoves = CleanEmojiStrings(RaidEmbedEnglishHelpers.ExtraMoves),
+                RaidEmbedEnglishHelpers.ScaleText,
+                SpecialRewards = CleanEmojiStrings(RaidEmbedEnglishHelpers.SpecialRewards),
                 RaidEmbedInfoHelpers.ScaleNumber,
                 Names = names,
                 Code_encrypted = encryptedCode,
@@ -3415,6 +3524,42 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
         /// </summary>
         private async Task<bool> ConnectToOnline(PokeRaidHubConfig config, CancellationToken token)
         {
+            // First check if already connected - if so, return success immediately
+            try
+            {
+                bool alreadyConnected = await IsConnectedOnline(_connectedOffset, token).ConfigureAwait(false);
+                if (alreadyConnected)
+                {
+                    // Verify the connection with additional checks for stability
+                    bool stable = true;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        await Task.Delay(500, token).ConfigureAwait(false);
+                        if (!await IsConnectedOnline(_connectedOffset, token).ConfigureAwait(false))
+                        {
+                            stable = false;
+                            break;
+                        }
+                    }
+
+                    if (stable)
+                    {
+                        Log("Already connected online, skipping connection process");
+                        await Task.Delay(500, token).ConfigureAwait(false);
+                        return true;
+                    }
+                    else
+                    {
+                        Log("Connection appears unstable, attempting to reconnect");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Error checking online status: {ex.Message}");
+            }
+
+            // If we reach here, we need to connect (or reconnect)
             int attemptCount = 0;
             const int maxAttempts = 5;
             const int waitTimeMinutes = 10;
@@ -3453,7 +3598,7 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                             Color = Color.Red,
                             ThumbnailUrl = "https://raw.githubusercontent.com/bdawg1989/sprites/main/imgs/x.png"
                         };
-                        EchoUtil.RaidEmbed(null, "", embed);
+                        _ = await EchoUtil.RaidEmbed(null, "", embed);
 
                         await Click(B, 0_500, token).ConfigureAwait(false);
                         await Click(B, 0_500, token).ConfigureAwait(false);
@@ -3469,7 +3614,8 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                     // Execute connection inputs
                     await Click(X, 3_000, token).ConfigureAwait(false);
                     await Click(L, 5_000 + config.Timings.ExtraTimeConnectOnline, token).ConfigureAwait(false);
-                    await Task.Delay(5000, token).ConfigureAwait(false);
+                    await Task.Delay(3000, token).ConfigureAwait(false);
+                    await RecoverToOverworld(token).ConfigureAwait(false);
 
                     // Check connection with stability verification
                     bool connected = await IsConnectedOnline(_connectedOffset, token).ConfigureAwait(false);
@@ -4368,7 +4514,9 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
         /// <summary>
         /// Creates raid info for API command
         /// </summary>
-        public static (PK9, Embed) RaidInfoCommand(string seedValue, int contentType, TeraRaidMapParent map, int storyProgressLevel, int raidDeliveryGroupID, List<string> rewardsToShow, bool moveTypeEmojis, List<MoveTypeEmojiInfo> customTypeEmojis, int queuePosition = 0, bool isEvent = false)
+        public static (PK9, Embed) RaidInfoCommand(string seedValue, int contentType, TeraRaidMapParent map, int storyProgressLevel,
+            int raidDeliveryGroupID, List<string> rewardsToShow, bool moveTypeEmojis, List<MoveTypeEmojiInfo> customTypeEmojis,
+            int queuePosition = 0, bool isEvent = false, int languageId = 1)
         {
             if (Container == null)
             {
@@ -4414,8 +4562,8 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             var level = encounter.Level;
             var pk = RaidPokemonGenerator.GenerateRaidPokemon(encounter, raid.Seed, raid.IsShiny, teraType, level);
 
-            // Create the embed
-            var strings = GameInfo.GetStrings(1);
+            // Get strings in the selected language
+            var strings = GameInfo.GetStrings(languageId);
             var useTypeEmojis = moveTypeEmojis;
             var typeEmojis = customTypeEmojis
                 .Where(e => !string.IsNullOrEmpty(e.EmojiCode))
@@ -4448,11 +4596,11 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             }
 
             // Process extra moves
+            var extraMovesList = new StringBuilder();
+            bool hasExtraMoves = false;
+
             if (encounter.ExtraMoves.Length > 0)
             {
-                var extraMovesList = new StringBuilder();
-                bool hasExtraMoves = false;
-
                 foreach (var moveId in encounter.ExtraMoves)
                 {
                     if (moveId != 0)
@@ -4469,25 +4617,17 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                         hasExtraMoves = true;
                     }
                 }
+            }
 
-                if (hasExtraMoves)
-                {
-                    movesList.AppendLine($"**Extra Moves:**");
-                    movesList.Append(extraMovesList);
-                    hasMoves = true;
-                }
+            // Build final moves string
+            string finalMoves = movesList.ToString();
+            if (hasExtraMoves)
+            {
+                finalMoves += $"**Extra Moves:**\n{extraMovesList}";
             }
 
             // Process rewards
-            string specialRewards;
-            try
-            {
-                specialRewards = GetSpecialRewards(reward, rewardsToShow);
-            }
-            catch
-            {
-                specialRewards = "No valid rewards to display";
-            }
+            string specialRewards = GetSpecialRewards(reward, rewardsToShow, languageId);
 
             // Build the embed
             var teraTypeLower = strings.Types[teraType].ToLower();
@@ -4495,7 +4635,7 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             var disclaimer = $"Current Position: {queuePosition}";
             var titlePrefix = raid.IsShiny ? "Shiny " : "";
             var formName = ShowdownParsing.GetStringFromForm(pk.Form, strings, pk.Species, pk.Context);
-            var authorName = $"{stars} ★ {titlePrefix}{(Species)encounter.Species}{(pk.Form != 0 ? $"-{formName}" : "")}{(isEvent ? " (Event Raid)" : "")}";
+            var authorName = $"{stars} ★ {titlePrefix}{strings.Species[encounter.Species]}{(pk.Form != 0 ? $"-{formName}" : "")}{(isEvent ? " (Event Raid)" : "")}";
 
             (int R, int G, int B) = Task.Run(() => RaidExtensions<PK9>.GetDominantColorAsync(RaidExtensions<PK9>.PokeImg(pk, false, false))).Result;
             var embedColor = new Color(R, G, B);
@@ -4511,7 +4651,7 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                 x.Value = $"{Format.Bold($"TeraType:")} {strings.Types[teraType]} \n" +
                           $"{Format.Bold($"Level:")} {level}\n" +
                           $"{Format.Bold($"Ability:")} {strings.Ability[pk.Ability]}\n" +
-                          $"{Format.Bold("Nature:")} {(Nature)pk.Nature}\n" +
+                          $"{Format.Bold("Nature:")} {strings.Natures[(int)pk.Nature]}\n" +
                           $"{Format.Bold("IVs:")} {pk.IV_HP}/{pk.IV_ATK}/{pk.IV_DEF}/{pk.IV_SPA}/{pk.IV_SPD}/{pk.IV_SPE}\n" +
                           $"{Format.Bold($"Scale:")} {PokeSizeDetailedUtil.GetSizeRating(pk.Scale)}";
                 x.IsInline = true;
@@ -4524,6 +4664,11 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             else
             {
                 embed.AddField("**__Moves__**", "No moves available", true);
+            }
+
+            if (hasExtraMoves)
+            {
+                embed.AddField("**__Extra Moves__**", extraMovesList.ToString(), true);
             }
 
             if (!string.IsNullOrEmpty(specialRewards))
@@ -4547,6 +4692,46 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                 auth.Name = authorName;
                 auth.IconUrl = teraIconUrl;
             });
+            var englishStrings = GameInfo.GetStrings(2);
+            var englishMovesList = new StringBuilder();
+            var englishExtraMovesList = new StringBuilder();
+            for (int i = 0; i < 4; i++)
+            {
+                int moveId = i switch { 0 => pk.Move1, 1 => pk.Move2, 2 => pk.Move3, 3 => pk.Move4, _ => 0 };
+                if (moveId != 0)
+                {
+                    string englishMoveName = englishStrings.Move[moveId];
+                    englishMovesList.AppendLine($"- {englishMoveName}");
+                }
+            }
+            if (encounter.ExtraMoves.Length > 0)
+            {
+                foreach (var moveId in encounter.ExtraMoves)
+                {
+                    if (moveId != 0)
+                    {
+                        string englishMoveName = englishStrings.Move[moveId];
+                        englishExtraMovesList.AppendLine($"- {englishMoveName}");
+                    }
+                }
+            }
+            string englishFinalMoves = englishMovesList.ToString();
+            if (englishExtraMovesList.Length > 0)
+            {
+                englishFinalMoves += $"Extra Moves:\n{englishExtraMovesList}";
+            }
+            string englishSpecialRewards = GetSpecialRewards(reward, rewardsToShow, 2);
+            string englishFormName = ShowdownParsing.GetStringFromForm(pk.Form, englishStrings, pk.Species, pk.Context);
+            string englishAuthorName = $"{stars} ★ {titlePrefix}{englishStrings.Species[encounter.Species]}{(pk.Form != 0 ? $"-{englishFormName}" : "")}{(isEvent ? " (Event Raid)" : "")}";
+            RaidEmbedEnglishHelpers.RaidEmbedTitle = englishAuthorName;
+            RaidEmbedEnglishHelpers.RaidSpeciesGender = pk.Gender == 0 ? "Male" : (pk.Gender == 1 ? "Female" : "Genderless");
+            RaidEmbedEnglishHelpers.RaidSpeciesAbility = englishStrings.Ability[pk.Ability];
+            RaidEmbedEnglishHelpers.RaidSpeciesNature = englishStrings.Natures[(int)pk.Nature];
+            RaidEmbedEnglishHelpers.RaidSpeciesTeraType = englishStrings.Types[teraType];
+            RaidEmbedEnglishHelpers.Moves = englishMovesList.ToString().TrimEnd();
+            RaidEmbedEnglishHelpers.ExtraMoves = englishExtraMovesList.ToString().TrimEnd();
+            RaidEmbedEnglishHelpers.ScaleText = PokeSizeDetailedUtil.GetSizeRating(pk.Scale).ToString();
+            RaidEmbedEnglishHelpers.SpecialRewards = englishSpecialRewards;
 
             return (pk, embed.Build());
         }

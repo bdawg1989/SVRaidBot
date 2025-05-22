@@ -325,198 +325,89 @@ namespace SysBot.Pokemon.SV
             );
         }
 
-        public static string GetSpecialRewards(IReadOnlyList<(int, int, int)> rewards, List<string> rewardsToShow)
+        public static string GetSpecialRewards(IReadOnlyList<(int, int, int)> rewards, List<string> rewardsToShow, int languageId)
         {
-            // Initialize reward counters
-            int rare = 0, abilitycapsule = 0, bottlecap = 0, abilitypatch = 0, pokeball = 0;
-            int expCandyL = 0, expCandyXL = 0, sweetHerba = 0, saltyHerba = 0, sourHerba = 0, bitterHerba = 0, spicyHerba = 0;
-            int nugget = 0, tinyMushroom = 0, bigMushroom = 0, pearl = 0, bigPearl = 0, stardust = 0, starPiece = 0, goldBottleCap = 0, ppUp = 0;
+            // Get localized item strings for the selected language
+            var strings = GameInfo.GetStrings(languageId);
+            Dictionary<string, int> rewardNameToId = new()
+            {
+                ["Rare Candy"] = 50,
+                ["Ability Capsule"] = 645,
+                ["Bottle Cap"] = 795,
+                ["Ability Patch"] = 1606,
+                ["Exp. Candy L"] = 1127,
+                ["Exp. Candy XL"] = 1128,
+                ["Sweet Herba Mystica"] = 1904,
+                ["Salty Herba Mystica"] = 1905,
+                ["Sour Herba Mystica"] = 1906,
+                ["Bitter Herba Mystica"] = 1907,
+                ["Spicy Herba Mystica"] = 1908,
+                ["Pokeball"] = 4,
+                ["Nugget"] = 92,
+                ["Tiny Mushroom"] = 86,
+                ["Big Mushroom"] = 87,
+                ["Pearl"] = 88,
+                ["Big Pearl"] = 89,
+                ["Stardust"] = 90,
+                ["Star Piece"] = 91,
+                ["Gold Bottle Cap"] = 796,
+                ["PP Up"] = 51,
+                ["Shards"] = 0 // Special case for Tera Shards
+            };
 
-            // Initialize Tera Shard counters
+            // Track item counts by ID
+            Dictionary<int, int> itemCounts = [];
             Dictionary<int, int> teraShards = [];
 
             // Count rewards
-            foreach ((int, int, int) reward in rewards)
+            foreach ((int itemId, int count, _) in rewards)
             {
-                switch (reward.Item1)
+                // Handle Tera Shards separately (1862-1879 range)
+                if (itemId >= 1862 && itemId <= 1879)
                 {
-                    case 0050: rare += reward.Item2; break;
-                    case 0645: abilitycapsule += reward.Item2; break;
-                    case 0795: bottlecap += reward.Item2; break;
-                    case 1127: expCandyL += reward.Item2; break;
-                    case 1128: expCandyXL += reward.Item2; break;
-                    case 1606: abilitypatch += reward.Item2; break;
-                    case 1904: sweetHerba += reward.Item2; break;
-                    case 1905: saltyHerba += reward.Item2; break;
-                    case 1906: sourHerba += reward.Item2; break;
-                    case 1907: bitterHerba += reward.Item2; break;
-                    case 1908: spicyHerba += reward.Item2; break;
-                    case 0004: pokeball += reward.Item2; break;
-                    case 0092: nugget += reward.Item2; break;
-                    case 0086: tinyMushroom += reward.Item2; break;
-                    case 0087: bigMushroom += reward.Item2; break;
-                    case 0088: pearl += reward.Item2; break;
-                    case 0089: bigPearl += reward.Item2; break;
-                    case 0090: stardust += reward.Item2; break;
-                    case 0091: starPiece += reward.Item2; break;
-                    case 0796: goldBottleCap += reward.Item2; break;
-                    case 0051: ppUp += reward.Item2; break;
-                    case >= 1862 and <= 1879:
-                        if (teraShards.ContainsKey(reward.Item1))
-                        {
-                            teraShards[reward.Item1] += reward.Item2;
-                        }
-                        else
-                        {
-                            teraShards[reward.Item1] = reward.Item2;
-                        }
-
-                        break;
+                    teraShards[itemId] = teraShards.TryGetValue(itemId, out var existing) ? existing + count : count;
+                }
+                else
+                {
+                    itemCounts[itemId] = itemCounts.TryGetValue(itemId, out var existing) ? existing + count : count;
                 }
             }
+
             // Format and filter rewards based on user preferences
-            List<string> rewardStrings = new();
-            if (rewardsToShow.Contains("Rare Candy") && rare > 0)
+            List<string> rewardStrings = [];
+
+            // Process regular items
+            foreach (string englishName in rewardsToShow)
             {
-                rewardStrings.Add($"**Rare Candy** x{rare}");
+                // Skip Shards as they're handled separately
+                if (englishName == "Shards")
+                    continue;
+
+                // Get item ID from the English name
+                if (!rewardNameToId.TryGetValue(englishName, out int itemId))
+                    continue;
+
+                // Check if this item was found in rewards
+                if (!itemCounts.TryGetValue(itemId, out int count) || count <= 0)
+                    continue;
+
+                // Get localized item name and add to results
+                string localizedName = strings.Item[itemId];
+                rewardStrings.Add($"**{localizedName}** x{count}");
             }
 
-            if (rewardsToShow.Contains("Ability Capsule") && abilitycapsule > 0)
+            // Process Tera Shards if they're in the rewardsToShow list
+            if (rewardsToShow.Contains("Shards") && teraShards.Count > 0)
             {
-                rewardStrings.Add($"**Ability Capsule** x{abilitycapsule}");
-            }
-
-            if (rewardsToShow.Contains("Bottle Cap") && bottlecap > 0)
-            {
-                rewardStrings.Add($"**Bottle Cap** x{bottlecap}");
-            }
-
-            if (rewardsToShow.Contains("Ability Patch") && abilitypatch > 0)
-            {
-                rewardStrings.Add($"**Ability Patch** x{abilitypatch}");
-            }
-
-            if (rewardsToShow.Contains("Exp. Candy L") && expCandyL > 0)
-            {
-                rewardStrings.Add($"**Exp. Candy L** x{expCandyL}");
-            }
-
-            if (rewardsToShow.Contains("Exp. Candy XL") && expCandyXL > 0)
-            {
-                rewardStrings.Add($"**Exp. Candy XL** x{expCandyXL}");
-            }
-
-            if (rewardsToShow.Contains("Sweet Herba Mystica") && sweetHerba > 0)
-            {
-                rewardStrings.Add($"**Sweet Herba Mystica** x{sweetHerba}");
-            }
-
-            if (rewardsToShow.Contains("Salty Herba Mystica") && saltyHerba > 0)
-            {
-                rewardStrings.Add($"**Salty Herba Mystica** x{saltyHerba}");
-            }
-
-            if (rewardsToShow.Contains("Sour Herba Mystica") && sourHerba > 0)
-            {
-                rewardStrings.Add($"**Sour Herba Mystica** x{sourHerba}");
-            }
-
-            if (rewardsToShow.Contains("Bitter Herba Mystica") && bitterHerba > 0)
-            {
-                rewardStrings.Add($"**Bitter Herba Mystica** x{bitterHerba}");
-            }
-
-            if (rewardsToShow.Contains("Spicy Herba Mystica") && spicyHerba > 0)
-            {
-                rewardStrings.Add($"**Spicy Herba Mystica** x{spicyHerba}");
-            }
-
-            if (rewardsToShow.Contains("Pokeball") && pokeball > 0)
-            {
-                rewardStrings.Add($"**Pokeball** x{pokeball}");
-            }
-
-            if (rewardsToShow.Contains("Nugget") && nugget > 0)
-            {
-                rewardStrings.Add($"**Nugget** x{nugget}");
-            }
-
-            if (rewardsToShow.Contains("Tiny Mushroom") && tinyMushroom > 0)
-            {
-                rewardStrings.Add($"**Tiny Mushroom** x{tinyMushroom}");
-            }
-
-            if (rewardsToShow.Contains("Big Mushroom") && bigMushroom > 0)
-            {
-                rewardStrings.Add($"**Big Mushroom** x{bigMushroom}");
-            }
-
-            if (rewardsToShow.Contains("Pearl") && pearl > 0)
-            {
-                rewardStrings.Add($"**Pearl** x{pearl}");
-            }
-
-            if (rewardsToShow.Contains("Big Pearl") && bigPearl > 0)
-            {
-                rewardStrings.Add($"**Big Pearl** x{bigPearl}");
-            }
-
-            if (rewardsToShow.Contains("Stardust") && stardust > 0)
-            {
-                rewardStrings.Add($"**Stardust** x{stardust}");
-            }
-
-            if (rewardsToShow.Contains("Star Piece") && starPiece > 0)
-            {
-                rewardStrings.Add($"**Star Piece** x{starPiece}");
-            }
-
-            if (rewardsToShow.Contains("Gold Bottle Cap") && goldBottleCap > 0)
-            {
-                rewardStrings.Add($"**Gold Bottle Cap** x{goldBottleCap}");
-            }
-
-            if (rewardsToShow.Contains("PP Up") && ppUp > 0)
-            {
-                rewardStrings.Add($"**PP Up** x{ppUp}");
-            }
-
-            if (rewardsToShow.Contains("Shards"))
-            {
-                foreach (KeyValuePair<int, int> shard in teraShards)
+                foreach (var (shardId, count) in teraShards)
                 {
-                    string shardTypeName = GetTeraShardTypeName(shard.Key);
-                    rewardStrings.Add($"**{shardTypeName} Tera Shard** x{shard.Value}");
+                    string typeName = strings.Types[(shardId - 1862) % 18]; // Map shard ID to type index
+                    string localizedShardName = $"{typeName} {strings.Item[1862]}"; // Using first shard ID as base
+                    rewardStrings.Add($"**{localizedShardName}** x{count}");
                 }
             }
 
             return string.Join("\n", rewardStrings);
-        }
-
-        private static string GetTeraShardTypeName(int shardType)
-        {
-            return shardType switch
-            {
-                1862 => "Normal",
-                1868 => "Fighting",
-                1871 => "Flying",
-                1869 => "Poison",
-                1870 => "Ground",
-                1874 => "Rock",
-                1873 => "Bug",
-                1875 => "Ghost",
-                1878 => "Steel",
-                1863 => "Fire",
-                1864 => "Water",
-                1866 => "Grass",
-                1865 => "Electric",
-                1872 => "Psychic",
-                1867 => "Ice",
-                1876 => "Dragon",
-                1877 => "Dark",
-                1879 => "Fairy",
-                _ => "Unknown", // or handle this case as needed
-            };
         }
 
         // Save Block Additions from TeraFinder/RaidCrawler/sv-livemap

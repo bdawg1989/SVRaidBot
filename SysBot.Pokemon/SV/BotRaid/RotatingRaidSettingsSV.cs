@@ -309,6 +309,10 @@ namespace SysBot.Pokemon
         {
             public override string ToString() => "Embed Toggles";
 
+            [Category(Hosting), Description("Select the language for raid embeds. This will translate Pokemon names, types, abilities, etc.")]
+            [DisplayName("Embed Language")]
+            public LanguageOptions EmbedLanguage { get; set; } = LanguageOptions.English;
+
             [Category(Hosting), Description("Will show Move Type Icons next to moves in trade embed (Discord only).  Requires user to upload the emojis to their server.")]
             [DisplayName("Use Move Type Emoji's?")]
             public bool MoveTypeEmojis { get; set; } = true;
@@ -336,6 +340,36 @@ namespace SysBot.Pokemon
             new(MoveType.Poison),
             new(MoveType.Fairy),
             ];
+
+            public enum LanguageOptions
+            {
+                [Description("Japanese")]
+                Japanese = 1,
+
+                [Description("English")]
+                English = 2,
+
+                [Description("French")]
+                French = 3,
+
+                [Description("Italian")]
+                Italian = 4,
+
+                [Description("German")]
+                German = 5,
+
+                [Description("Spanish")]
+                Spanish = 7,
+
+                [Description("Korean")]
+                Korean = 8,
+
+                [Description("Chinese (Simplified)")]
+                ChineseS = 9,
+
+                [Description("Chinese (Traditional)")]
+                ChineseT = 10
+            }
 
             [Category(Hosting), Description("The full string for the male gender emoji. Leave blank to not use.")]
             [DisplayName("Male Emoji Code")]
@@ -573,13 +607,13 @@ namespace SysBot.Pokemon
                 _raidLimit = Math.Max(1, Math.Min(3, value));
             }
 
-            [Category(FeatureToggle), Description("Set the action you would want your bot to perform. 'AFK' will make the bot idle, while 'MashA' presses A every 3.5s")]
+            [Category(FeatureToggle), Description("Set the action you would want your bot to perform. 'AFK' will make the bot idle, while 'MashA' presses A every 1s")]
             [DisplayName("A Button Action")]
             public RaidAction Action { get; set; } = RaidAction.MashA;
 
-            [Category(FeatureToggle), Description("Delay for the 'MashA' action in seconds.  [3.5 is default]")]
+            [Category(FeatureToggle), Description("Delay for the 'MashA' action in seconds.  [1.0 is default]")]
             [DisplayName("A Button Delay (Seconds)")]
-            public double MashADelay { get; set; } = 3.5;  // Default value set to 3.5 seconds
+            public double MashADelay { get; set; } = 1.0;  // Default value set to 1.0 seconds
 
             [Category(FeatureToggle), Description("Extra time in milliseconds to wait after Lobby Disbands in Raid before deciding to not capture the raidmon.")]
             [DisplayName("Extra Time To Disband Raid")]

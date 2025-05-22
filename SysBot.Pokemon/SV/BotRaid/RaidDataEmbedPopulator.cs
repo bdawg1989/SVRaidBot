@@ -1,6 +1,5 @@
 ﻿using Discord;
 using PKHeX.Core;
-using RaidCrawler.Core.Structures;
 using System;
 using System.Text.RegularExpressions;
 

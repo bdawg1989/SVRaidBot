@@ -36,6 +36,9 @@
     <EmbeddedResource Include="SV\BotRaid\DenLocations\*.json" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="SV\BotRaid\Language\EmbedLanguageMappings.json" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="deps\PKHeX.Core.AutoMod.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
