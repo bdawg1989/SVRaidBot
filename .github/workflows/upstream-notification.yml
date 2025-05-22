@@ -19,8 +19,11 @@ jobs:
         run: |
           git remote add upstream https://github.com/bdawg1989/SVRaidBot.git
           git fetch upstream
-          # Prüfe, ob HEAD ein Vorfahr von upstream/main ist (Upstream ist weiter)
-          if git merge-base --is-ancestor HEAD upstream/main; then
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
+          
+          # Prüfe, ob upstream/main einen neuen Commit hat, der nicht in unserem Fork ist
+          if [ "$CURRENT_COMMIT" != "$UPSTREAM_COMMIT" ] && git log HEAD..upstream/main | grep -q ''; then
             echo "has_updates=true" >> $GITHUB_OUTPUT
             echo "upstream_commit=$(git rev-parse upstream/main)" >> $GITHUB_OUTPUT
             echo "upstream_message=$(git log -1 --pretty=%B upstream/main)" >> $GITHUB_OUTPUT
