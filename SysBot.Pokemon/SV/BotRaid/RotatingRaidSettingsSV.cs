@@ -611,9 +611,9 @@ namespace SysBot.Pokemon
             [DisplayName("A Button Action")]
             public RaidAction Action { get; set; } = RaidAction.MashA;
 
-            [Category(FeatureToggle), Description("Delay for the 'MashA' action in seconds.  [1.0 is default]")]
+            [Category(FeatureToggle), Description("Delay for the 'MashA' action in seconds.  [1 is default]")]
             [DisplayName("A Button Delay (Seconds)")]
-            public double MashADelay { get; set; } = 1.0;  // Default value set to 1.0 seconds
+            public double MashADelay { get; set; } = 1;  // Default value set to 1.0 seconds
 
             [Category(FeatureToggle), Description("Extra time in milliseconds to wait after Lobby Disbands in Raid before deciding to not capture the raidmon.")]
             [DisplayName("Extra Time To Disband Raid")]

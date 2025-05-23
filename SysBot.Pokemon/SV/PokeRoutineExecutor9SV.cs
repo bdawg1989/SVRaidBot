@@ -401,8 +401,8 @@ namespace SysBot.Pokemon.SV
             {
                 foreach (var (shardId, count) in teraShards)
                 {
-                    string typeName = strings.Types[(shardId - 1862) % 18]; // Map shard ID to type index
-                    string localizedShardName = $"{typeName} {strings.Item[1862]}"; // Using first shard ID as base
+                    // Use the full localized item name directly (it already contains the type)
+                    string localizedShardName = strings.Item[shardId];
                     rewardStrings.Add($"**{localizedShardName}** x{count}");
                 }
             }

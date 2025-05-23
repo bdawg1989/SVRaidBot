@@ -766,58 +766,6 @@ namespace SysBot.Pokemon.SV.BotRaid
         }
 
         /// <summary>
-        /// Locates the nearest active den to the player for seed injection
-        /// </summary>
-        private async Task LocateSeedIndex(CancellationToken token)
-        {
-            try
-            {
-                var playerLocation = await GetPlayersLocation(token);
-                var currentRegion = await DetectCurrentRegion(token);
-
-                Log($"Player location: ({playerLocation.Item1:F2}, {playerLocation.Item2:F2}, {playerLocation.Item3:F2})");
-                Log($"Current region: {currentRegion}");
-
-                // Get all ACTIVE raid locations (only dens that are actually visible/active in the game)
-                var activeRaids = await GetActiveRaidLocations(currentRegion, token);
-
-                if (activeRaids.Count == 0)
-                {
-                    Log("No active dens found in the current region.");
-                    _seedIndexToReplace = -1;
-                    return;
-                }
-
-                Log($"Found {activeRaids.Count} active dens in {currentRegion}");
-
-                // Find the nearest active den to the player's current location
-                var nearestActiveDen = activeRaids
-                    .Select(raid => new
-                    {
-                        Raid = raid,
-                        Distance = CalculateDistance(playerLocation, (raid.Coordinates[0], raid.Coordinates[1], raid.Coordinates[2]))
-                    })
-                    .OrderBy(x => x.Distance)
-                    .First();
-
-                _seedIndexToReplace = nearestActiveDen.Raid.Index;
-
-                Log($"Nearest active den: {nearestActiveDen.Raid.DenIdentifier} at index {_seedIndexToReplace} (distance: {nearestActiveDen.Distance:F2})");
-                Log($"Current seed at that location: {nearestActiveDen.Raid.Seed:X8}");
-                Log($"Target den selected - will teleport during next seed injection phase");
-
-                // Update region flags based on the current region
-                IsKitakami = currentRegion == TeraRaidMapParent.Kitakami;
-                IsBlueberry = currentRegion == TeraRaidMapParent.Blueberry;
-            }
-            catch (Exception ex)
-            {
-                Log($"Error in LocateSeedIndex: {ex.Message}");
-                _seedIndexToReplace = -1;
-            }
-        }
-
-        /// <summary>
         /// Completes a raid after trainers have joined
         /// </summary>
         private async Task CompleteRaid(CancellationToken token)
@@ -1220,7 +1168,6 @@ namespace SysBot.Pokemon.SV.BotRaid
                 }
             }
 
-            await LocateSeedIndex(token).ConfigureAwait(false);
             await CountRaids(trainers, token).ConfigureAwait(false);
 
             // Update RotationCount after locating seed index
@@ -3788,10 +3735,6 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                 Log($"Attempting to override seed for {_settings.ActiveRaids[RotationCount].Species}.");
                 await OverrideSeedIndex(_seedIndexToReplace, token).ConfigureAwait(false);
                 Log("Seed override completed.");
-
-                await Task.Delay(2_000, token).ConfigureAwait(false);
-                await LogPlayerLocation(token);
-                await Task.Delay(2_000, token).ConfigureAwait(false);
             }
 
             for (int i = 0; i < 8; i++)
@@ -3826,7 +3769,8 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             await Task.Delay(5_000 + timing.ExtraTimeLoadOverworld, token).ConfigureAwait(false);
             Log("Back in the overworld!");
             _lostRaid = 0;
-
+            await Task.Delay(2_000, token).ConfigureAwait(false);
+            await LogPlayerLocation(token);
             if (_settings.RaidSettings.MysteryRaids)
             {
                 int mysteryRaidCount = _settings.ActiveRaids.Count(raid => raid.Title.Contains("Mystery Shiny Raid"));
@@ -3978,7 +3922,7 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
         }
 
         /// <summary>
-        /// Logs the player's location and teleports to the nearest active den if needed
+        /// Logs the player's location and den
         /// </summary>
         private async Task LogPlayerLocation(CancellationToken token)
         {
@@ -4040,17 +3984,20 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                 uint denSeed = nearestActiveRaid.Raid.Seed;
                 string hexDenSeed = denSeed.ToString("X8");
                 _denHexSeed = hexDenSeed;
-                Log($"Seed: {hexDenSeed} Nearest active den: {nearestActiveRaid.Raid.DenIdentifier}");
 
-                bool onOverworld = await IsOnOverworld(_overworldOffset, token).ConfigureAwait(false);
-                if (!onOverworld)
+                // Log the nearest active den information
+                Log($"Player location: ({playerLocation.Item1:F2}, {playerLocation.Item2:F2}, {playerLocation.Item3:F2})");
+                Log($"Nearest active den: {nearestActiveRaid.Raid.DenIdentifier} (Index: {nearestActiveRaid.Raid.Index})");
+                Log($"Distance to nearest den: {distanceToNearestActiveDen:F2}");
+                Log($"Seed at nearest den: {hexDenSeed}");
+
+                if (distanceToNearestActiveDen > threshold)
                 {
-                    if (distanceToNearestActiveDen > threshold)
-                    {
-                        // Player is not at the den, so teleport
-                        await TeleportToDen(nearestActiveRaid.Raid.Coordinates[0], nearestActiveRaid.Raid.Coordinates[1], nearestActiveRaid.Raid.Coordinates[2], token);
-                        Log($"Teleported to nearest active den: {nearestActiveRaid.Raid.DenIdentifier} Seed: {nearestActiveRaid.Raid.Seed:X8} in {overallNearest.Region}.");
-                    }
+                    Log($"Player is {distanceToNearestActiveDen:F2} units away from the nearest active den (threshold: {threshold})");
+                }
+                else
+                {
+                    Log($"Player is at the nearest active den");
                 }
             }
             else
@@ -4058,16 +4005,9 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
                 Log($"No active dens found in {overallNearest.Region}");
             }
 
+            // Update region flags based on the detected region
             IsKitakami = overallNearest.Region == "Kitakami";
             IsBlueberry = overallNearest.Region == "Blueberry";
-        }
-
-        /// <summary>
-        /// Determines if a raid is active
-        /// </summary>
-        private static bool IsRaidActive((uint Area, uint LotteryGroup, uint Den) raid)
-        {
-            return true;
         }
 
         /// <summary>
@@ -4075,7 +4015,9 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
         /// </summary>
         private async Task<List<(string DenIdentifier, float[] Coordinates, int Index, uint Seed, uint Flags, bool IsEvent)>> GetActiveRaidLocations(TeraRaidMapParent mapType, CancellationToken token)
         {
-            var raidInfo = await ExtractRaidInfo(mapType, token);
+            // Read the raw raid data for the region
+            byte[] raidData = await ReadRaidsForRegion(mapType, token);
+
             Dictionary<string, float[]> denLocations = mapType switch
             {
                 TeraRaidMapParent.Paldea => LoadDenLocations("SysBot.Pokemon.SV.BotRaid.DenLocations.den_locations_base.json"),
@@ -4085,17 +4027,34 @@ ALwkMx63fBR0pKs+jJ8DcFrcJR50aVv1jfIAQpPIK5G6Dk/4hmV12Hdu5sSGLl40
             };
 
             var activeRaids = new List<(string DenIdentifier, float[] Coordinates, int Index, uint Seed, uint Flags, bool IsEvent)>();
-            int index = 0;
-            foreach (var (Area, LotteryGroup, Den, Seed, Flags, IsEvent) in raidInfo)
+
+            // Calculate the starting index offset based on the map type
+            int startingIndex = mapType switch
             {
-                string raidIdentifier = $"{Area}-{LotteryGroup}-{Den}";
-                if (denLocations.TryGetValue(raidIdentifier, out var coordinates) && IsRaidActive((Area, LotteryGroup, Den)))
+                TeraRaidMapParent.Paldea => 0,
+                TeraRaidMapParent.Kitakami => 69,
+                TeraRaidMapParent.Blueberry => 94,
+                _ => 0
+            };
+
+            // Process each raid in the data
+            for (int i = 0; i < raidData.Length; i += Raid.SIZE)
+            {
+                var raid = new Raid(raidData.AsSpan()[i..(i + Raid.SIZE)], mapType);
+
+                // Check if the raid is actually active (visible in game)
+                if (raid.IsActive)
                 {
-                    activeRaids.Add((raidIdentifier, coordinates, index, Seed, Flags, IsEvent));
+                    string raidIdentifier = $"{raid.Area}-{raid.LotteryGroup}-{raid.Den}";
+                    if (denLocations.TryGetValue(raidIdentifier, out var coordinates))
+                    {
+                        int globalIndex = startingIndex + (i / Raid.SIZE);
+                        activeRaids.Add((raidIdentifier, coordinates, globalIndex, raid.Seed, raid.Flags, raid.IsEvent));
+                    }
                 }
-                index++;
             }
 
+            Log($"Found {activeRaids.Count} active raids in {mapType}");
             return activeRaids;
         }
 
